@@ -14,7 +14,7 @@ const app = express();
 const server = http.createServer(app);
 
 // IMPORTANT: For Render, use the PORT environment variable
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 10000;
 
 // Configure CORS for production
 const corsOptions = {
@@ -69,34 +69,15 @@ app.use(
   })
 );
 
-// MongoDB Connection with retry logic for Render
-const connectDB = async () => {
-  try {
-    const mongoURI = process.env.MONGODB_URI || "mongodb://localhost:27017/mern-chat";
-    await mongoose.connect(mongoURI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 45000,
-    });
+// SIMPLIFIED MongoDB Connection - This will work
+mongoose.connect(process.env.MONGODB_URI || "mongodb://localhost:27017/mern-chat")
+  .then(() => {
     console.log("✅ MongoDB Connected Successfully");
-  } catch (err) {
+  })
+  .catch((err) => {
     console.error("❌ MongoDB Connection Error:", err.message);
-    // Retry connection after 5 seconds
-    setTimeout(connectDB, 5000);
-  }
-};
-
-connectDB();
-
-// MongoDB connection events
-mongoose.connection.on("disconnected", () => {
-  console.log("⚠️  MongoDB disconnected. Attempting to reconnect...");
-});
-
-mongoose.connection.on("error", (err) => {
-  console.error("❌ MongoDB connection error:", err);
-});
+    // Don't exit on MongoDB error - server can still run
+  });
 
 const User = require("./models/User");
 
@@ -593,6 +574,15 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log(`🔗 Client URL: ${process.env.CLIENT_URL || "Not set"}`);
   console.log(`🔗 MongoDB: ${mongoose.connection.readyState === 1 ? "Connected" : "Disconnected"}`);
   console.log(`⚡ WebSocket Server: Ready`);
+});
+
+// Handle uncaught exceptions to prevent crash
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled Rejection:', err);
 });
 
 module.exports = { io, server };
