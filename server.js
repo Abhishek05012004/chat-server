@@ -44,9 +44,10 @@ const io = new Server(server, {
   allowEIO3: true // For compatibility
 });
 
-// FIXED: Handle preflight requests properly
+// Handle preflight requests - FIXED VERSION
 app.options("*", (req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", corsOptions.origin[0]); // Use first origin
+  const origin = Array.isArray(corsOptions.origin) ? corsOptions.origin[0] : corsOptions.origin;
+  res.setHeader("Access-Control-Allow-Origin", origin);
   res.setHeader("Access-Control-Allow-Methods", corsOptions.methods.join(", "));
   res.setHeader("Access-Control-Allow-Headers", corsOptions.allowedHeaders.join(", "));
   res.setHeader("Access-Control-Allow-Credentials", "true");
