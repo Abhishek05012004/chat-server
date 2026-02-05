@@ -44,8 +44,14 @@ const io = new Server(server, {
   allowEIO3: true // For compatibility
 });
 
-// Handle preflight requests
-app.options("*", cors(corsOptions));
+// FIXED: Handle preflight requests properly
+app.options("*", (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", corsOptions.origin[0]); // Use first origin
+  res.setHeader("Access-Control-Allow-Methods", corsOptions.methods.join(", "));
+  res.setHeader("Access-Control-Allow-Headers", corsOptions.allowedHeaders.join(", "));
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.status(200).end();
+});
 
 const uploadsDir = path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadsDir)) {
@@ -69,14 +75,13 @@ app.use(
   })
 );
 
-// SIMPLIFIED MongoDB Connection - This will work
+// SIMPLIFIED MongoDB Connection
 mongoose.connect(process.env.MONGODB_URI || "mongodb://localhost:27017/mern-chat")
   .then(() => {
     console.log("✅ MongoDB Connected Successfully");
   })
   .catch((err) => {
     console.error("❌ MongoDB Connection Error:", err.message);
-    // Don't exit on MongoDB error - server can still run
   });
 
 const User = require("./models/User");
