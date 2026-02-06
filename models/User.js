@@ -1,3 +1,4 @@
+// models/User.js
 const mongoose = require("mongoose")
 const bcrypt = require("bcryptjs")
 
@@ -53,6 +54,14 @@ const userSchema = new mongoose.Schema(
     lastSeen: {
       type: Date,
       default: Date.now,
+    },
+    socketId: {
+      type: String,
+      default: null,
+    },
+    loginTime: {
+      type: Date,
+      default: null,
     },
   },
   { timestamps: true },

@@ -11,25 +11,45 @@ dotenv.config()
 
 const app = express()
 const server = http.createServer(app)
-const io = new Server(server, {
-  cors: {
-    origin: process.env.CLIENT_URL || "http://localhost:5173",
-    methods: ["GET", "POST"],
-  },
-  pingTimeout: 60000,
-  pingInterval: 25000,
-})
 
-// Middleware
-app.use(cors())
+// CORS configuration - allow localhost for now, update after frontend deployment
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true)
+    
+    const allowedOrigins = [
+      "http://localhost:5173",  // Vite default
+      "http://localhost:3000",  // Create React App default
+      "https://your-frontend-domain.vercel.app" // Will update after deployment
+    ]
+    
+    if (allowedOrigins.indexOf(origin) !== -1 || origin.includes("localhost")) {
+      callback(null, true)
+    } else {
+      callback(new Error("Not allowed by CORS"))
+    }
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+}
+
+app.use(cors(corsOptions))
+
+// Preflight requests
+app.options("*", cors(corsOptions))
+
 app.use(express.json({ limit: "50mb" }))
 app.use(express.urlencoded({ extended: true, limit: "50mb" }))
 
+// Create uploads directory if it doesn't exist
 const uploadsDir = path.join(__dirname, "uploads")
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true })
 }
 
+// Serve static files with proper headers
 app.use(
   "/api/uploads/static",
   (req, res, next) => {
@@ -38,8 +58,8 @@ app.use(
     next()
   },
   express.static(uploadsDir, {
-    setHeaders: (res, path) => {
-      if (path.endsWith(".pdf")) {
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith(".pdf")) {
         res.setHeader("Content-Type", "application/pdf")
         res.setHeader("Content-Disposition", "inline")
       }
@@ -47,30 +67,73 @@ app.use(
   }),
 )
 
-mongoose
-  .connect(process.env.MONGODB_URI || "mongodb://localhost:27017/mern-chat")
-  .then(() => console.log("MongoDB Connected Successfully"))
-  .catch((err) => console.error("MongoDB Connection Error:", err))
+// MongoDB connection with retry logic
+const connectDB = async () => {
+  try {
+    await mongoose.connect(process.env.MONGODB_URI || "mongodb://localhost:27017/mern-chat", {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    })
+    console.log("MongoDB Connected Successfully")
+  } catch (err) {
+    console.error("MongoDB Connection Error:", err)
+    // Retry connection after 5 seconds
+    setTimeout(connectDB, 5000)
+  }
+}
+
+connectDB()
 
 const User = require("./models/User")
 
 app.set("io", io)
 
+// Socket.io configuration
+const io = new Server(server, {
+  cors: {
+    origin: function (origin, callback) {
+      // Allow requests with no origin
+      if (!origin) return callback(null, true)
+      
+      const allowedOrigins = [
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "https://your-frontend-domain.vercel.app"
+      ]
+      
+      if (allowedOrigins.indexOf(origin) !== -1 || origin.includes("localhost")) {
+        callback(null, true)
+      } else {
+        callback(new Error("Not allowed by CORS"))
+      }
+    },
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
+  transports: ["websocket", "polling"],
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  connectionStateRecovery: {
+    maxDisconnectionDuration: 2 * 60 * 1000,
+    skipMiddlewares: true,
+  },
+})
+
 const activeCallSessions = {}
 const userSockets = {}
-const userLoginTime = {} // Track when users login
+const userLoginTime = {}
 
-// Socket.io connection
+// Socket.io connection (keep your existing socket logic exactly as is)
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id)
 
   socket.on("user-online", async (userId, loginTime) => {
     const uid = String(userId)
     socket.userId = uid
-    socket.loginTime = loginTime || Date.now() // Store login time
+    socket.loginTime = loginTime || Date.now()
     socket.join(`user:${uid}`)
     userSockets[uid] = socket.id
-    userLoginTime[uid] = socket.loginTime // Store login time per user
+    userLoginTime[uid] = socket.loginTime
 
     console.log(`[SOCKET] User ${uid} joined room user:${uid}, socket ID: ${socket.id}, Login Time: ${socket.loginTime}`)
     console.log(`[SOCKET] Total users online:`, Object.keys(userSockets).length)
@@ -92,7 +155,6 @@ io.on("connection", (socket) => {
         return
       }
 
-      // Broadcast to ALL connected clients so everyone sees this user as online
       io.emit("user-status-changed", { 
         userId: uid, 
         status: "online",
@@ -104,12 +166,10 @@ io.on("connection", (socket) => {
     }
   })
 
-  // Explicit logout / going offline (so status updates before socket disconnect)
   socket.on("user-offline", async (userId) => {
     const uid = String(userId)
     console.log(`[SOCKET] User ${uid} going offline (user-offline event)`)
     
-    // Only mark offline if this is the most recent login session
     if (userLoginTime[uid] && userLoginTime[uid] === socket.loginTime) {
       try {
         delete userSockets[uid]
@@ -138,7 +198,6 @@ io.on("connection", (socket) => {
     const { callerId, receiverId, offer, callerName, callerProfile, chatId } = data
     console.log(`[CALL] ${callerId} initiating call to ${receiverId}`)
     
-    // Check if receiver is online
     const receiverSocketId = userSockets[receiverId]
     if (!receiverSocketId) {
       console.log(`[CALL] ${receiverId} is offline - socket not found`)
@@ -149,7 +208,6 @@ io.on("connection", (socket) => {
       return
     }
 
-    // Check if receiver is already in an ACTIVE call
     const receiverSession = activeCallSessions[receiverId]
     if (receiverSession && receiverSession.status === "connected") {
       console.log(`[CALL] ${receiverId} is busy in an active call`)
@@ -160,7 +218,6 @@ io.on("connection", (socket) => {
       return
     }
 
-    // Check if caller is already in an active call
     const callerSession = activeCallSessions[callerId]
     if (callerSession && callerSession.status === "connected") {
       console.log(`[CALL] ${callerId} is already in an active call`)
@@ -171,7 +228,6 @@ io.on("connection", (socket) => {
       return
     }
 
-    // Clear any pending call sessions for both users
     if (callerSession && callerSession.status !== "connected") {
       delete activeCallSessions[callerId]
     }
@@ -179,7 +235,6 @@ io.on("connection", (socket) => {
       delete activeCallSessions[receiverId]
     }
 
-    // Track this call session
     const callSessionId = `${callerId}-${receiverId}-${Date.now()}`
     activeCallSessions[callerId] = {
       sessionId: callSessionId,
@@ -198,24 +253,20 @@ io.on("connection", (socket) => {
 
     console.log(`[CALL] Sending offer to receiver ${receiverId}`)
     
-    // Set timeout for no answer (30 seconds)
     const noAnswerTimeout = setTimeout(() => {
       const currentReceiverSession = activeCallSessions[receiverId]
       if (currentReceiverSession && currentReceiverSession.status === "ringing") {
         console.log(`[CALL] ${receiverId} did not answer - timeout`)
         
-        // Clear call sessions
         delete activeCallSessions[callerId]
         delete activeCallSessions[receiverId]
         
-        // Notify caller
         io.to(`user:${callerId}`).emit("call:ended", {
           callerId,
           receiverId,
           reason: "no_answer",
         })
         
-        // Notify receiver to clear incoming call UI
         io.to(`user:${receiverId}`).emit("call:ended", {
           callerId,
           receiverId,
@@ -224,11 +275,9 @@ io.on("connection", (socket) => {
       }
     }, 30000)
 
-    // Store timeout ID for cleanup
     activeCallSessions[callerId].noAnswerTimeout = noAnswerTimeout
     activeCallSessions[receiverId].noAnswerTimeout = noAnswerTimeout
 
-    // Send offer to receiver with complete caller info
     io.to(`user:${receiverId}`).emit("call:incoming", {
       callerId,
       receiverId,
@@ -245,7 +294,6 @@ io.on("connection", (socket) => {
     const { callerId, receiverId, answer, receiverName } = data
     console.log(`[CALL] ${receiverId} accepted call from ${callerId}`)
 
-    // Check if call session exists
     const callerSession = activeCallSessions[callerId]
     const receiverSession = activeCallSessions[receiverId]
     
@@ -255,7 +303,6 @@ io.on("connection", (socket) => {
       return
     }
 
-    // Clear no answer timeout
     if (callerSession.noAnswerTimeout) {
       clearTimeout(callerSession.noAnswerTimeout)
     }
@@ -263,13 +310,11 @@ io.on("connection", (socket) => {
       clearTimeout(receiverSession.noAnswerTimeout)
     }
 
-    // Update call session status
     callerSession.status = "connected"
     receiverSession.status = "connected"
     delete callerSession.noAnswerTimeout
     delete receiverSession.noAnswerTimeout
 
-    // Send answer back to caller
     io.to(`user:${callerId}`).emit("call:answer-received", {
       callerId,
       receiverId,
@@ -277,7 +322,6 @@ io.on("connection", (socket) => {
       receiverName,
     })
     
-    // Send acceptance notification to both parties
     io.to(`user:${callerId}`).emit("call:accepted-notification", {
       callerId,
       receiverId,
@@ -295,7 +339,6 @@ io.on("connection", (socket) => {
     const { callerId, receiverId, reason, receiverName } = data
     console.log(`[CALL] ${receiverId} rejected call from ${callerId}`)
 
-    // Clear no answer timeout
     const callerSession = activeCallSessions[callerId]
     const receiverSession = activeCallSessions[receiverId]
     
@@ -306,11 +349,9 @@ io.on("connection", (socket) => {
       clearTimeout(receiverSession.noAnswerTimeout)
     }
 
-    // Clear call sessions
     delete activeCallSessions[callerId]
     delete activeCallSessions[receiverId]
 
-    // Send rejection to caller
     io.to(`user:${callerId}`).emit("call:rejected", {
       callerId,
       receiverId,
@@ -318,7 +359,6 @@ io.on("connection", (socket) => {
       receiverName: receiverName || "User",
     })
     
-    // Also send ended event to receiver to clear UI
     io.to(`user:${receiverId}`).emit("call:ended", {
       callerId,
       receiverId,
@@ -332,7 +372,6 @@ io.on("connection", (socket) => {
     const { fromUserId, toUserId, candidate } = data
     console.log(`[ICE] Candidate from ${fromUserId} to ${toUserId}`)
 
-    // Send ICE candidate to the other user
     io.to(`user:${toUserId}`).emit("ice-candidate", {
       fromUserId,
       toUserId,
@@ -344,11 +383,9 @@ io.on("connection", (socket) => {
     const { callerId, receiverId, reason } = data
     console.log(`[CALL] ${callerId} ended call with ${receiverId}, reason: ${reason}`)
 
-    // Verify the call session exists and matches before clearing
     const callerSession = activeCallSessions[callerId]
     const receiverSession = activeCallSessions[receiverId]
     
-    // Clear no answer timeouts
     if (callerSession?.noAnswerTimeout) {
       clearTimeout(callerSession.noAnswerTimeout)
     }
@@ -356,7 +393,6 @@ io.on("connection", (socket) => {
       clearTimeout(receiverSession.noAnswerTimeout)
     }
     
-    // Only clear sessions if they match the call being ended
     if (callerSession && callerSession.callerId === callerId && callerSession.receiverId === receiverId) {
       delete activeCallSessions[callerId]
       console.log(`[CALL] Cleared session for caller ${callerId}`)
@@ -367,7 +403,6 @@ io.on("connection", (socket) => {
       console.log(`[CALL] Cleared session for receiver ${receiverId}`)
     }
 
-    // Notify both users about call end
     if (receiverId) {
       io.to(`user:${receiverId}`).emit("call:ended", {
         callerId,
@@ -389,7 +424,6 @@ io.on("connection", (socket) => {
     console.log(`[CALL] Call ended, sessions cleared. Remaining sessions:`, Object.keys(activeCallSessions))
   })
 
-  // Join chat room
   socket.on("join-chat", (chatId) => {
     socket.join(chatId)
   })
@@ -443,14 +477,11 @@ io.on("connection", (socket) => {
     console.log(`[SOCKET] User ${userId} disconnected, login time: ${loginTime}`)
     
     if (userId) {
-      // Only mark offline if this is the most recent login session
       if (userLoginTime[userId] && userLoginTime[userId] === loginTime) {
-        // Handle active calls
         const userSession = activeCallSessions[userId]
         if (userSession) {
           const otherUserId = userSession.callerId === userId ? userSession.receiverId : userSession.callerId
           
-          // Notify other user that call ended due to disconnect
           if (otherUserId) {
             io.to(`user:${otherUserId}`).emit("call:ended", {
               callerId: userSession.callerId,
@@ -459,17 +490,14 @@ io.on("connection", (socket) => {
             })
           }
           
-          // Clear no answer timeouts
           if (userSession.noAnswerTimeout) {
             clearTimeout(userSession.noAnswerTimeout)
           }
           
-          // Clear call sessions
           delete activeCallSessions[userId]
           delete activeCallSessions[otherUserId]
         }
 
-        // Remove from userSockets and userLoginTime
         delete userSockets[userId]
         delete userLoginTime[userId]
 
@@ -504,14 +532,29 @@ app.use("/api/chats", require("./routes/chats"))
 app.use("/api/uploads", require("./routes/uploads"))
 app.use("/api/profile", require("./routes/profile"))
 
-// Health check
+// Health check endpoint
 app.get("/", (req, res) => {
-  res.json({ message: "MERN Chat API is running" })
+  res.json({ 
+    message: "MERN Chat API is running",
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
+    websocket: 'active'
+  })
+})
+
+// Test endpoint for WebSocket connection
+app.get("/api/status", (req, res) => {
+  res.json({
+    status: "online",
+    activeConnections: io.engine.clientsCount,
+    activeCallSessions: Object.keys(activeCallSessions).length,
+    uptime: process.uptime()
+  })
 })
 
 const PORT = process.env.PORT || 5000
 server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`)
+  console.log(`Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`)
 })
 
 module.exports = { io }

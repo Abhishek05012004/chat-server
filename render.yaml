@@ -1,0 +1,22 @@
+# render.yaml
+services:
+  - type: web
+    name: chat-server
+    env: node
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: MONGODB_URI
+        value: mongodb+srv://abhishekjha2707_db_user:gn47bZm6rWl92UDq@cluster0.ugsb4is.mongodb.net/chat?appName=Cluster0
+      - key: JWT_SECRET
+        value: e7f9c83e5f1b6d8a0f9dbe5a2c7e2b8a4e1f7d
+      - key: EMAIL_USER
+        value: abhishekjha2707@gmail.com
+      - key: EMAIL_APP_PASSWORD
+        value: vwyt jcuy yzlr orcx
+      - key: CLIENT_URL
+        value: http://localhost:5173  # Will update after frontend deployment
+      - key: PORT
+        value: 5000
+      - key: NODE_ENV
+        value: production
