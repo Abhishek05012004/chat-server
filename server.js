@@ -12,21 +12,22 @@ dotenv.config()
 const app = express()
 const server = http.createServer(app)
 
-// CORS configuration - allow localhost for now, update after frontend deployment
+// CORS configuration - simplified for deployment
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:3000"
+  // Add your Vercel frontend URL here after deployment
+]
+
 const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true)
     
-    const allowedOrigins = [
-      "http://localhost:5173",  // Vite default
-      "http://localhost:3000",  // Create React App default
-      "https://your-frontend-domain.vercel.app" // Will update after deployment
-    ]
-    
     if (allowedOrigins.indexOf(origin) !== -1 || origin.includes("localhost")) {
       callback(null, true)
     } else {
+      console.log(`CORS blocked origin: ${origin}`)
       callback(new Error("Not allowed by CORS"))
     }
   },
@@ -37,8 +38,17 @@ const corsOptions = {
 
 app.use(cors(corsOptions))
 
-// Preflight requests
-app.options("*", cors(corsOptions))
+// Handle preflight requests
+app.use((req, res, next) => {
+  if (req.method === "OPTIONS") {
+    res.header("Access-Control-Allow-Origin", req.headers.origin || "*")
+    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+    res.header("Access-Control-Allow-Credentials", "true")
+    return res.status(200).end()
+  }
+  next()
+})
 
 app.use(express.json({ limit: "50mb" }))
 app.use(express.urlencoded({ extended: true, limit: "50mb" }))
@@ -86,20 +96,12 @@ connectDB()
 
 const User = require("./models/User")
 
-app.set("io", io)
-
-// Socket.io configuration
+// Socket.io configuration - moved before app.set("io", io)
 const io = new Server(server, {
   cors: {
     origin: function (origin, callback) {
       // Allow requests with no origin
       if (!origin) return callback(null, true)
-      
-      const allowedOrigins = [
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "https://your-frontend-domain.vercel.app"
-      ]
       
       if (allowedOrigins.indexOf(origin) !== -1 || origin.includes("localhost")) {
         callback(null, true)
@@ -118,6 +120,8 @@ const io = new Server(server, {
     skipMiddlewares: true,
   },
 })
+
+app.set("io", io)
 
 const activeCallSessions = {}
 const userSockets = {}
@@ -555,6 +559,7 @@ app.get("/api/status", (req, res) => {
 const PORT = process.env.PORT || 5000
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`)
+  console.log(`WebSocket server ready`)
 })
 
 module.exports = { io }
