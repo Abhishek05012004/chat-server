@@ -12,11 +12,11 @@ dotenv.config()
 const app = express()
 const server = http.createServer(app)
 
-// CORS configuration - simplified for deployment
+// CORS configuration - updated with your Vercel URL
 const allowedOrigins = [
   "http://localhost:5173",
-  "http://localhost:3000"
-  // Add your Vercel frontend URL here after deployment
+  "http://localhost:3000",
+  "https://chat-client-pink-eight.vercel.app" // Your Vercel URL
 ]
 
 const corsOptions = {
@@ -77,18 +77,17 @@ app.use(
   }),
 )
 
-// MongoDB connection (Mongoose v9+ doesn't need useNewUrlParser or useUnifiedTopology)
+// MongoDB connection
 mongoose
   .connect(process.env.MONGODB_URI || "mongodb://localhost:27017/mern-chat")
   .then(() => console.log("MongoDB Connected Successfully"))
   .catch((err) => {
     console.error("MongoDB Connection Error:", err)
-    // Continue running even if MongoDB fails (for testing)
   })
 
 const User = require("./models/User")
 
-// Socket.io configuration
+// Socket.io configuration - updated with Vercel URL
 const io = new Server(server, {
   cors: {
     origin: function (origin, callback) {
@@ -119,7 +118,7 @@ const activeCallSessions = {}
 const userSockets = {}
 const userLoginTime = {}
 
-// Socket.io connection (keep your existing socket logic exactly as is)
+// Socket.io connection (keep all your existing socket logic as is)
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id)
 
@@ -535,7 +534,8 @@ app.get("/", (req, res) => {
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
     websocket: 'active',
-    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    client_url: "https://chat-client-pink-eight.vercel.app"
   })
 })
 
@@ -546,7 +546,8 @@ app.get("/api/status", (req, res) => {
     activeConnections: io.engine.clientsCount,
     activeCallSessions: Object.keys(activeCallSessions).length,
     uptime: process.uptime(),
-    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    client_url: "https://chat-client-pink-eight.vercel.app"
   })
 })
 
@@ -554,6 +555,7 @@ const PORT = process.env.PORT || 5000
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`)
   console.log(`WebSocket server ready`)
+  console.log(`Client URL: https://chat-client-pink-eight.vercel.app`)
 })
 
 module.exports = { io }
