@@ -77,26 +77,18 @@ app.use(
   }),
 )
 
-// MongoDB connection with retry logic
-const connectDB = async () => {
-  try {
-    await mongoose.connect(process.env.MONGODB_URI || "mongodb://localhost:27017/mern-chat", {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    })
-    console.log("MongoDB Connected Successfully")
-  } catch (err) {
+// MongoDB connection (Mongoose v9+ doesn't need useNewUrlParser or useUnifiedTopology)
+mongoose
+  .connect(process.env.MONGODB_URI || "mongodb://localhost:27017/mern-chat")
+  .then(() => console.log("MongoDB Connected Successfully"))
+  .catch((err) => {
     console.error("MongoDB Connection Error:", err)
-    // Retry connection after 5 seconds
-    setTimeout(connectDB, 5000)
-  }
-}
-
-connectDB()
+    // Continue running even if MongoDB fails (for testing)
+  })
 
 const User = require("./models/User")
 
-// Socket.io configuration - moved before app.set("io", io)
+// Socket.io configuration
 const io = new Server(server, {
   cors: {
     origin: function (origin, callback) {
@@ -542,7 +534,8 @@ app.get("/", (req, res) => {
     message: "MERN Chat API is running",
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
-    websocket: 'active'
+    websocket: 'active',
+    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
   })
 })
 
@@ -552,7 +545,8 @@ app.get("/api/status", (req, res) => {
     status: "online",
     activeConnections: io.engine.clientsCount,
     activeCallSessions: Object.keys(activeCallSessions).length,
-    uptime: process.uptime()
+    uptime: process.uptime(),
+    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
   })
 })
 
