@@ -374,6 +374,17 @@ io.on("connection", (socket) => {
     })
   })
 
+  socket.on("call:toggle-media", (data) => {
+    const { toUserId, type, enabled } = data
+    console.log(`[MEDIA] Toggle ${type} to ${enabled} for ${toUserId}`)
+    
+    io.to(`user:${toUserId}`).emit("call:toggle-media", {
+      type,
+      enabled,
+      fromUserId: socket.userId
+    })
+  })
+
   socket.on("call:end", (data) => {
     const { callerId, receiverId, reason } = data
     console.log(`[CALL] ${callerId} ended call with ${receiverId}, reason: ${reason}`)
