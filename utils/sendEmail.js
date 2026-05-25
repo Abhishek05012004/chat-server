@@ -29,9 +29,9 @@ const sendOTPEmail = async (email, otp, username) => {
     const transporter = createTransporter()
 
     const mailOptions = {
-      from: `"MERN Chat App" <${process.env.EMAIL_USER}>`,
+      from: `"Chat App" <${process.env.EMAIL_USER}>`,
       to: email,
-      subject: "Verify Your Email - MERN Chat App",
+      subject: "Verify Your Email - Chat App",
       html: `
         <!DOCTYPE html>
         <html>
@@ -48,11 +48,11 @@ const sendOTPEmail = async (email, otp, username) => {
           <body>
             <div class="container">
               <div class="header">
-                <h1>Welcome to MERN Chat!</h1>
+                <h1>Welcome to Chat App!</h1>
               </div>
               <div class="content">
                 <h2>Hello ${username},</h2>
-                <p>Thank you for registering with MERN Chat App. To complete your registration, please use the following One-Time Password (OTP):</p>
+                <p>Thank you for registering with Chat App. To complete your registration, please use the following One-Time Password (OTP):</p>
                 <div class="otp-box">${otp}</div>
                 <p>This OTP is valid for 10 minutes. Please do not share this code with anyone.</p>
                 <p>If you didn't request this registration, please ignore this email.</p>
@@ -81,9 +81,9 @@ const sendPasswordResetEmail = async (email, otp, username) => {
     const transporter = createTransporter()
 
     const mailOptions = {
-      from: `"MERN Chat App" <${process.env.EMAIL_USER}>`,
+      from: `"Chat App" <${process.env.EMAIL_USER}>`,
       to: email,
-      subject: "Reset Your Password - MERN Chat App",
+      subject: "Reset Your Password - Chat App",
       html: `
         <!DOCTYPE html>
         <html>
@@ -105,7 +105,7 @@ const sendPasswordResetEmail = async (email, otp, username) => {
               </div>
               <div class="content">
                 <h2>Hello ${username},</h2>
-                <p>We received a request to reset your password for your MERN Chat account. To proceed, please use the following One-Time Password (OTP):</p>
+                <p>We received a request to reset your password for your Chat App account. To proceed, please use the following One-Time Password (OTP):</p>
                 <div class="otp-box">${otp}</div>
                 <p>This OTP is valid for 10 minutes. Please do not share this code with anyone.</p>
                 <div class="warning">
