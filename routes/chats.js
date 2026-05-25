@@ -207,7 +207,7 @@ router.post("/:chatId/messages", authMiddleware, async (req, res) => {
 router.post("/:chatId/call-log", authMiddleware, async (req, res) => {
   try {
     const { chatId } = req.params
-    const { callStatus, callerId, durationInSeconds } = req.body
+    const { callStatus, callerId, durationInSeconds, startTime } = req.body
 
     if (!callStatus || !callerId) {
       return res.status(400).json({ message: "callStatus and callerId are required" })
@@ -266,6 +266,7 @@ router.post("/:chatId/call-log", authMiddleware, async (req, res) => {
       seenBy: [{ user: req.user._id }],
       deliveredTo: deliveredTo,
       reactions: [],
+      createdAt: startTime ? new Date(startTime) : new Date(),
     })
 
     await message.save()

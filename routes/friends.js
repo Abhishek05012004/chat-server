@@ -18,19 +18,19 @@ router.post("/request", authMiddleware, async (req, res) => {
       return res.status(400).json({ message: "Cannot send friend request to yourself" })
     }
 
-    // Check if friend request already exists
-    const existingRequest = await FriendRequest.findOne({
+    // Check if active friend request already exists
+    const existingActiveRequest = await FriendRequest.findOne({
       $or: [
-        { sender: req.user._id, receiver: receiverId },
-        { sender: receiverId, receiver: req.user._id },
+        { sender: req.user._id, receiver: receiverId, status: { $in: ["pending", "accepted"] } },
+        { sender: receiverId, receiver: req.user._id, status: { $in: ["pending", "accepted"] } },
       ],
     })
 
-    if (existingRequest) {
-      if (existingRequest.status === "pending") {
+    if (existingActiveRequest) {
+      if (existingActiveRequest.status === "pending") {
         return res.status(400).json({ message: "Friend request already sent" })
       }
-      if (existingRequest.status === "accepted") {
+      if (existingActiveRequest.status === "accepted") {
         return res.status(400).json({ message: "Already friends" })
       }
     }
@@ -264,13 +264,14 @@ router.get("/", authMiddleware, async (req, res) => {
       .populate("receiver", "username email status lastSeen profileImage")
 
     // Extract friend users
-    const friends = friendRequests.map((request) => {
-      if (request.sender._id.toString() === req.user._id.toString()) {
-        return request.receiver
-      } else {
-        return request.sender
+    const friendsMap = new Map()
+    friendRequests.forEach((request) => {
+      const friend = request.sender._id.toString() === req.user._id.toString() ? request.receiver : request.sender
+      if (friend && friend._id) {
+        friendsMap.set(friend._id.toString(), friend)
       }
     })
+    const friends = Array.from(friendsMap.values())
 
     res.status(200).json({ friends })
   } catch (error) {
@@ -287,7 +288,7 @@ router.get("/status/:userId", authMiddleware, async (req, res) => {
         { sender: req.user._id, receiver: req.params.userId },
         { sender: req.params.userId, receiver: req.user._id },
       ],
-    })
+    }).sort({ createdAt: -1 })
 
     if (!friendRequest) {
       return res.status(200).json({ status: "none" })

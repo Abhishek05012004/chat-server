@@ -80,7 +80,15 @@ app.use(
 // MongoDB connection
 mongoose
   .connect(process.env.MONGODB_URI || "mongodb://localhost:27017/mern-chat")
-  .then(() => console.log("MongoDB Connected Successfully"))
+  .then(async () => {
+    console.log("MongoDB Connected Successfully")
+    try {
+      await mongoose.connection.db.collection("friendrequests").dropIndex("sender_1_receiver_1")
+      console.log("Index sender_1_receiver_1 dropped successfully")
+    } catch (err) {
+      // Index may not exist, ignore error
+    }
+  })
   .catch((err) => {
     console.error("MongoDB Connection Error:", err)
   })

@@ -21,7 +21,4 @@ const friendRequestSchema = new mongoose.Schema(
   { timestamps: true },
 )
 
-// Compound index to prevent duplicate friend requests
-friendRequestSchema.index({ sender: 1, receiver: 1 }, { unique: true })
-
 module.exports = mongoose.model("FriendRequest", friendRequestSchema)
