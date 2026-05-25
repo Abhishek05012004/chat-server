@@ -50,7 +50,13 @@ router.post("/request", authMiddleware, async (req, res) => {
 
     const io = req.app.get("io")
     if (io) {
-      io.emit("friend-request-received", {
+      io.to(`user:${receiverId}`).emit("friend-request-received", {
+        receiverId: receiverId,
+        senderId: req.user._id,
+        senderUsername: populatedRequest.sender.username,
+        requestId: friendRequest._id,
+      })
+      io.to(`user:${req.user._id.toString()}`).emit("friend-request-sent", {
         receiverId: receiverId,
         senderId: req.user._id,
         senderUsername: populatedRequest.sender.username,
@@ -73,7 +79,6 @@ router.get("/requests/received", authMiddleware, async (req, res) => {
   try {
     const friendRequests = await FriendRequest.find({
       receiver: req.user._id,
-      status: "pending",
     })
       .populate("sender", "username email status lastSeen profileImage")
       .populate("receiver", "username email status profileImage")
@@ -91,7 +96,6 @@ router.get("/requests/sent", authMiddleware, async (req, res) => {
   try {
     const friendRequests = await FriendRequest.find({
       sender: req.user._id,
-      status: "pending",
     })
       .populate("sender", "username email status profileImage")
       .populate("receiver", "username email status lastSeen profileImage")
@@ -144,7 +148,12 @@ router.post("/request/:requestId/accept", authMiddleware, async (req, res) => {
     const io = req.app.get("io")
     const acceptedByUser = await User.findById(req.user._id).select("username")
     if (io && acceptedByUser) {
-      io.emit("friend-request-accepted", {
+      io.to(`user:${friendRequest.sender._id.toString()}`).emit("friend-request-accepted", {
+        senderId: friendRequest.sender._id,
+        acceptedById: req.user._id,
+        acceptedByUsername: acceptedByUser.username,
+      })
+      io.to(`user:${req.user._id.toString()}`).emit("friend-request-accepted", {
         senderId: friendRequest.sender._id,
         acceptedById: req.user._id,
         acceptedByUsername: acceptedByUser.username,
@@ -182,10 +191,64 @@ router.post("/request/:requestId/reject", authMiddleware, async (req, res) => {
     friendRequest.status = "rejected"
     await friendRequest.save()
 
+    const io = req.app.get("io")
+    if (io) {
+      io.to(`user:${friendRequest.sender.toString()}`).emit("friend-request-rejected", {
+        requestId: friendRequest._id,
+        senderId: friendRequest.sender,
+        receiverId: friendRequest.receiver,
+      })
+      io.to(`user:${friendRequest.receiver.toString()}`).emit("friend-request-rejected", {
+        requestId: friendRequest._id,
+        senderId: friendRequest.sender,
+        receiverId: friendRequest.receiver,
+      })
+    }
+
     res.status(200).json({ message: "Friend request rejected" })
   } catch (error) {
     console.error("[v0] Reject friend request error:", error)
     res.status(500).json({ message: "Server error while rejecting friend request" })
+  }
+})
+
+// Cancel friend request
+router.post("/request/:requestId/cancel", authMiddleware, async (req, res) => {
+  try {
+    const friendRequest = await FriendRequest.findById(req.params.requestId)
+
+    if (!friendRequest) {
+      return res.status(404).json({ message: "Friend request not found" })
+    }
+
+    if (friendRequest.sender.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: "Unauthorized to cancel this request" })
+    }
+
+    if (friendRequest.status !== "pending") {
+      return res.status(400).json({ message: "Friend request already processed" })
+    }
+
+    await FriendRequest.findByIdAndDelete(req.params.requestId)
+
+    const io = req.app.get("io")
+    if (io) {
+      io.to(`user:${friendRequest.receiver.toString()}`).emit("friend-request-cancelled", {
+        requestId: friendRequest._id,
+        senderId: friendRequest.sender,
+        receiverId: friendRequest.receiver,
+      })
+      io.to(`user:${friendRequest.sender.toString()}`).emit("friend-request-cancelled", {
+        requestId: friendRequest._id,
+        senderId: friendRequest.sender,
+        receiverId: friendRequest.receiver,
+      })
+    }
+
+    res.status(200).json({ message: "Friend request cancelled" })
+  } catch (error) {
+    console.error("Cancel friend request error:", error)
+    res.status(500).json({ message: "Server error while cancelling friend request" })
   }
 })
 

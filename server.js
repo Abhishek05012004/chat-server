@@ -156,6 +156,41 @@ io.on("connection", (socket) => {
         loginTime: socket.loginTime
       })
       console.log(`[SOCKET] User ${uid} is now online, broadcast sent`)
+
+      // Automatically mark undelivered messages as delivered
+      const Message = require("./models/Message")
+      const Chat = require("./models/Chat")
+
+      const userChats = await Chat.find({ participants: uid }).select('_id')
+      const chatIds = userChats.map(c => c._id)
+
+      const undeliveredMessages = await Message.find({
+        chat: { $in: chatIds },
+        sender: { $ne: uid },
+        "deliveredTo.user": { $ne: uid }
+      })
+
+      if (undeliveredMessages.length > 0) {
+        await Message.updateMany(
+          { _id: { $in: undeliveredMessages.map(m => m._id) } },
+          { $push: { deliveredTo: { user: uid, deliveredAt: new Date() } } }
+        )
+
+        const senders = [...new Set(undeliveredMessages.map(m => m.sender.toString()))]
+        senders.forEach(senderId => {
+          const senderSocketId = userSockets[senderId]
+          if (senderSocketId) {
+            undeliveredMessages.filter(m => m.sender.toString() === senderId).forEach(msg => {
+              io.to(senderSocketId).emit("message-delivered-update", {
+                chatId: msg.chat.toString(),
+                messageId: msg._id,
+                userId: uid
+              })
+            })
+          }
+        })
+      }
+
     } catch (error) {
       console.error("Error updating user status:", error)
     }
@@ -445,6 +480,14 @@ io.on("connection", (socket) => {
       messageId: data.messageId,
       userId: data.userId,
     })
+  })
+
+  socket.on("message-deleted", (data) => {
+    socket.to(data.chatId).emit("message-deleted", data)
+    if (data.recipientId) {
+      io.to(`user:${data.recipientId}`).emit("message-deleted", data)
+    }
+    io.emit("unread-count-changed", { chatId: data.chatId })
   })
 
   socket.on("message-seen", (data) => {

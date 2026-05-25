@@ -31,7 +31,9 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({ message: "Invalid phone number" })
     }
 
-    const existingUser = await User.findOne({
+    // Check if a verified user already exists with the same credentials
+    const verifiedUser = await User.findOne({
+      isVerified: true,
       $or: [
         { username: { $regex: new RegExp(`^${username}$`, "i") } },
         { email: email.toLowerCase() },
@@ -39,17 +41,27 @@ router.post("/register", async (req, res) => {
       ],
     })
 
-    if (existingUser) {
-      if (existingUser.username.toLowerCase() === username.toLowerCase()) {
+    if (verifiedUser) {
+      if (verifiedUser.username.toLowerCase() === username.toLowerCase()) {
         return res.status(400).json({ message: "Username already exists" })
       }
-      if (existingUser.email === email.toLowerCase()) {
+      if (verifiedUser.email === email.toLowerCase()) {
         return res.status(400).json({ message: "Email already exists" })
       }
-      if (existingUser.phoneNumber === phoneNumber) {
+      if (verifiedUser.phoneNumber === phoneNumber) {
         return res.status(400).json({ message: "Phone number already exists" })
       }
     }
+
+    // Delete any unverified temporary users matching these credentials to allow a fresh registration
+    await User.deleteMany({
+      isVerified: false,
+      $or: [
+        { username: { $regex: new RegExp(`^${username}$`, "i") } },
+        { email: email.toLowerCase() },
+        { phoneNumber },
+      ],
+    })
 
     // Generate OTP
     const otp = generateOTP()

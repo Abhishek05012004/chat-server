@@ -7,6 +7,7 @@ const mime = require("mime-types")
 const authMiddleware = require("../middleware/auth")
 const Chat = require("../models/Chat")
 const Message = require("../models/Message")
+const User = require("../models/User")
 
 const uploadsDir = path.join(__dirname, "../uploads")
 if (!fs.existsSync(uploadsDir)) {
@@ -86,6 +87,17 @@ router.post("/:chatId/upload", authMiddleware, upload.single("file"), async (req
 
     const fileUrl = `/api/uploads/file/${req.file.filename}`
 
+    const otherParticipantIds = chat.participants.filter((p) => p.toString() !== req.user._id.toString())
+    const onlineParticipants = await User.find({
+      _id: { $in: otherParticipantIds },
+      status: "online",
+    })
+
+    const deliveredTo = [{ user: req.user._id }]
+    onlineParticipants.forEach((p) => {
+      deliveredTo.push({ user: p._id, deliveredAt: new Date() })
+    })
+
     const message = new Message({
       chat: chatId,
       sender: req.user._id,
@@ -100,7 +112,7 @@ router.post("/:chatId/upload", authMiddleware, upload.single("file"), async (req
         },
       ],
       seenBy: [{ user: req.user._id }],
-      deliveredTo: [{ user: req.user._id }],
+      deliveredTo: deliveredTo,
       reactions: [],
     })
 

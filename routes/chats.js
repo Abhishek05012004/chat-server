@@ -2,6 +2,7 @@ const express = require("express")
 const router = express.Router()
 const Chat = require("../models/Chat")
 const Message = require("../models/Message")
+const User = require("../models/User")
 const FriendRequest = require("../models/FriendRequest")
 const authMiddleware = require("../middleware/auth")
 
@@ -122,7 +123,7 @@ router.get("/:chatId/messages", authMiddleware, async (req, res) => {
     const totalMessages = await Message.countDocuments({ chat: chatId })
 
     const filteredMessages = messages.reverse().filter((msg) => {
-      if (msg.isDeletedForAll) return false
+      // We no longer filter out isDeletedForAll, because the frontend needs to render the "Deleted" placeholder
       if (msg.deletedBy && msg.deletedBy.some((d) => d.user.toString() === req.user._id.toString())) {
         return false
       }
@@ -161,13 +162,25 @@ router.post("/:chatId/messages", authMiddleware, async (req, res) => {
       return res.status(403).json({ message: "Unauthorized access to this chat" })
     }
 
+    // Find online participants to automatically mark as delivered
+    const otherParticipantIds = chat.participants.filter((p) => p.toString() !== req.user._id.toString())
+    const onlineParticipants = await User.find({
+      _id: { $in: otherParticipantIds },
+      status: "online",
+    })
+
+    const deliveredTo = [{ user: req.user._id }]
+    onlineParticipants.forEach((p) => {
+      deliveredTo.push({ user: p._id, deliveredAt: new Date() })
+    })
+
     // Create message
     const message = new Message({
       chat: chatId,
       sender: req.user._id,
       content: content.trim(),
       seenBy: [{ user: req.user._id }],
-      deliveredTo: [{ user: req.user._id }],
+      deliveredTo: deliveredTo,
       reactions: [],
     })
 
@@ -233,6 +246,17 @@ router.post("/:chatId/call-log", authMiddleware, async (req, res) => {
       content = "Video call rejected"
     }
 
+    const otherParticipantIds = chat.participants.filter((p) => p.toString() !== req.user._id.toString())
+    const onlineParticipants = await User.find({
+      _id: { $in: otherParticipantIds },
+      status: "online",
+    })
+
+    const deliveredTo = [{ user: req.user._id }]
+    onlineParticipants.forEach((p) => {
+      deliveredTo.push({ user: p._id, deliveredAt: new Date() })
+    })
+
     const message = new Message({
       chat: chatId,
       sender: callerId,
@@ -240,7 +264,7 @@ router.post("/:chatId/call-log", authMiddleware, async (req, res) => {
       type: "call",
       callDuration: callDuration || undefined,
       seenBy: [{ user: req.user._id }],
-      deliveredTo: [{ user: req.user._id }],
+      deliveredTo: deliveredTo,
       reactions: [],
     })
 
@@ -351,6 +375,7 @@ router.get("/:chatId/unread", authMiddleware, async (req, res) => {
       chat: chatId,
       sender: { $ne: req.user._id },
       "seenBy.user": { $ne: req.user._id },
+      isDeletedForAll: { $ne: true }
     })
 
     res.status(200).json({ unreadCount })
@@ -455,5 +480,39 @@ router.delete("/:chatId/messages/:messageId", authMiddleware, async (req, res) =
     res.status(500).json({ message: "Server error while deleting message" })
   }
 })
+
+// Clear entire chat history for the user
+router.delete("/:chatId/clear", authMiddleware, async (req, res) => {
+  try {
+    const { chatId } = req.params;
+
+    // Check if user is part of the chat
+    const chat = await Chat.findById(chatId);
+    if (!chat || !chat.participants.includes(req.user._id)) {
+      return res.status(403).json({ message: "Unauthorized" });
+    }
+
+    // Mark all messages as deleted for this user
+    await Message.updateMany(
+      {
+        chat: chatId,
+        "deletedBy.user": { $ne: req.user._id },
+      },
+      {
+        $push: {
+          deletedBy: {
+            user: req.user._id,
+            deletedAt: new Date(),
+          },
+        },
+      }
+    );
+
+    res.status(200).json({ message: "Chat history cleared successfully" });
+  } catch (error) {
+    console.error("[v0] Clear chat error:", error);
+    res.status(500).json({ message: "Server error while clearing chat" });
+  }
+});
 
 module.exports = router
