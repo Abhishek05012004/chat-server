@@ -40,6 +40,8 @@ router.post("/request", authMiddleware, async (req, res) => {
       sender: req.user._id,
       receiver: receiverId,
       status: "pending",
+      senderSeen: true,
+      receiverSeen: false,
     })
 
     await friendRequest.save()
@@ -77,6 +79,12 @@ router.post("/request", authMiddleware, async (req, res) => {
 // Get received friend requests
 router.get("/requests/received", authMiddleware, async (req, res) => {
   try {
+    // Mark received requests as seen
+    await FriendRequest.updateMany(
+      { receiver: req.user._id, status: "pending", receiverSeen: false },
+      { $set: { receiverSeen: true } }
+    )
+
     const friendRequests = await FriendRequest.find({
       receiver: req.user._id,
     })
@@ -94,6 +102,12 @@ router.get("/requests/received", authMiddleware, async (req, res) => {
 // Get sent friend requests
 router.get("/requests/sent", authMiddleware, async (req, res) => {
   try {
+    // Mark sent requests (accepted/rejected) as seen
+    await FriendRequest.updateMany(
+      { sender: req.user._id, status: { $in: ["accepted", "rejected"] }, senderSeen: false },
+      { $set: { senderSeen: true } }
+    )
+
     const friendRequests = await FriendRequest.find({
       sender: req.user._id,
     })
@@ -127,6 +141,7 @@ router.post("/request/:requestId/accept", authMiddleware, async (req, res) => {
 
     // Update friend request status
     friendRequest.status = "accepted"
+    friendRequest.senderSeen = false
     await friendRequest.save()
 
     // Create chat between the two users
@@ -189,6 +204,7 @@ router.post("/request/:requestId/reject", authMiddleware, async (req, res) => {
 
     // Update friend request status
     friendRequest.status = "rejected"
+    friendRequest.senderSeen = false
     await friendRequest.save()
 
     const io = req.app.get("io")
@@ -306,6 +322,28 @@ router.get("/status/:userId", authMiddleware, async (req, res) => {
   } catch (error) {
     console.error("[v0] Check friend status error:", error)
     res.status(500).json({ message: "Server error while checking friend status" })
+  }
+})
+
+// Get unread requests count
+router.get("/requests/unread-count", authMiddleware, async (req, res) => {
+  try {
+    const receivedCount = await FriendRequest.countDocuments({
+      receiver: req.user._id,
+      status: "pending",
+      receiverSeen: false,
+    })
+
+    const sentCount = await FriendRequest.countDocuments({
+      sender: req.user._id,
+      status: { $in: ["accepted", "rejected"] },
+      senderSeen: false,
+    })
+
+    res.status(200).json({ unreadCount: receivedCount + sentCount })
+  } catch (error) {
+    console.error("[v0] Get unread requests count error:", error)
+    res.status(500).json({ message: "Server error while fetching unread count" })
   }
 })
 
