@@ -13,7 +13,7 @@ services:
       - key: EMAIL_USER
         value: abhishekjha2707@gmail.com
       - key: EMAIL_APP_PASSWORD
-        value: fczl umyf mftr gjyw
+        value: uxvv cnxw gigr vtrn
       - key: CLIENT_URL
         value: https://chat-client-pink-eight.vercel.app  
       - key: PORT
