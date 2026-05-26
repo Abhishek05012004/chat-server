@@ -239,7 +239,15 @@ router.post("/resend-otp", async (req, res) => {
     await user.save()
 
     // Send OTP email
-    await sendOTPEmail(user.email, otp, user.username)
+    try {
+      await sendOTPEmail(user.email, otp, user.username)
+    } catch (emailError) {
+      console.error("[v0] Failed to send resend OTP email:", emailError.message)
+      return res.status(500).json({
+        message: "Failed to send OTP email. Please check your email configuration.",
+        error: emailError.message,
+      })
+    }
 
     res.status(200).json({ message: "OTP resent successfully" })
   } catch (error) {
@@ -278,7 +286,15 @@ router.post("/forgot-password", async (req, res) => {
     await user.save()
 
     // Send OTP email
-    await sendPasswordResetEmail(user.email, otp, user.username)
+    try {
+      await sendPasswordResetEmail(user.email, otp, user.username)
+    } catch (emailError) {
+      console.error("[v0] Failed to send password reset email:", emailError.message)
+      return res.status(500).json({
+        message: "Failed to send OTP email. Please check your email configuration.",
+        error: emailError.message,
+      })
+    }
 
     res.status(200).json({
       message: "OTP sent to your registered email",
@@ -383,7 +399,15 @@ router.post("/resend-forgot-otp", async (req, res) => {
     await user.save()
 
     // Send OTP email
-    await sendPasswordResetEmail(user.email, otp, user.username)
+    try {
+      await sendPasswordResetEmail(user.email, otp, user.username)
+    } catch (emailError) {
+      console.error("[v0] Failed to send resend forgot OTP email:", emailError.message)
+      return res.status(500).json({
+        message: "Failed to send OTP email. Please check your email configuration.",
+        error: emailError.message,
+      })
+    }
 
     res.status(200).json({ message: "OTP resent successfully" })
   } catch (error) {

@@ -13,9 +13,9 @@ services:
       - key: EMAIL_USER
         value: abhishekjha2707@gmail.com
       - key: EMAIL_APP_PASSWORD
-        value: vwyt jcuy yzlr orcx
+        value: fczl umyf mftr gjyw
       - key: CLIENT_URL
-        value: http://localhost:5173  # Will update after frontend deployment
+        value: https://chat-client-pink-eight.vercel.app  
       - key: PORT
         value: 5000
       - key: NODE_ENV
