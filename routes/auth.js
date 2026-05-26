@@ -27,8 +27,9 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({ message: "Invalid email format" })
     }
 
-    if (phoneNumber.length < 10) {
-      return res.status(400).json({ message: "Invalid phone number" })
+    const phoneRegex = /^\d{10}$/
+    if (!phoneRegex.test(phoneNumber)) {
+      return res.status(400).json({ message: "Phone number must be exactly 10 digits and contain only numbers" })
     }
 
     // Check if a verified user already exists with the same credentials
