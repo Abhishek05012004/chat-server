@@ -16,8 +16,9 @@ const server = http.createServer(app)
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:3000",
-  "https://chat-client-pink-eight.vercel.app" // Your Vercel URL
-]
+  "https://chat-client-pink-eight.vercel.app", // Your Vercel URL
+  process.env.CLIENT_URL
+].filter(Boolean)
 
 const corsOptions = {
   origin: function (origin, callback) {
